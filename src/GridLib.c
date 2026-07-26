@@ -3455,7 +3455,9 @@ int _WriteLocation(FILE *fpio, HypoDesc* phypo, ArrivalDesc* parrivals,
                 -1, -1, -1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "NULLGRID");
         fprintf(fpio, "SEARCH %s\n", phypo->searchInfo);
         fprintf(fpio,
-                "HYPOCENTER  x %lg y %lg z %lg  OT %lg  ix %d iy %d iz %d %s\n",
+                // Concordens: %lg (6 sig-figs) truncated large UTM northings to
+                // ~10 m; use fixed decimals so x/y/z keep sub-metre precision.
+                "HYPOCENTER  x %.6f y %.6f z %.6f  OT %lg  ix %d iy %d iz %d %s\n",
                 phypo->x, phypo->y, phypo->z, (double) phypo->sec,
                 phypo->ix, phypo->iy, phypo->iz,
                 phypo->type // 20170811 AJL - added to allow saving of expectation hypocenter results instead of maximum likelihood
