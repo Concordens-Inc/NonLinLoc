@@ -180,6 +180,9 @@ extern int nll_mode;
 #define GRID_TIME  1000  /* time (sec) 3D grid */
 #define GRID_TIME_2D  1001  /* time (sec)
 							2D grid / 1D model */
+#define GRID_TIME_MESH  1002  /* time (sec) on a tetrahedral mesh (MeshTimeLib.h) */
+/* 3D travel-time grid: regular (GRID_TIME) or on a tetrahedral mesh (GRID_TIME_MESH) */
+#define IS_GRID_TIME_3D(type) ((type) == GRID_TIME || (type) == GRID_TIME_MESH)
 #define GRID_PROB_DENSITY 2001  /* probability density (may be confidence levels) */
 #define GRID_MISFIT  2002  /* misfit (sec) */
 #define GRID_LIKELIHOOD  2003  /* relative likelihood normalised 0-1 (may be same as probability density) */
@@ -279,6 +282,14 @@ typedef struct {
     GridDesc_Cascading gridDesc_Cascading; // GridDesc_Cascading description, initialized if this grid is a cascading grid (flagGridCascading==IS_CASCADING)
     // 20161021 AJL - added
     char mapProjStr[2 * MAXLINE]; // holds map projection description string from grid hdr if present
+    // 2026 Concordens: travel-time grid on a tetrahedral mesh (type GRID_TIME_MESH, MeshTimeLib.h);
+    // set by OpenGrid3dFile, NULL / 0 for every other grid
+    void *mesh; // MeshDesc shared by every grid on the same mesh
+    const GRID_FLOAT_TYPE *mesh_values; // time per mesh node (s), memory-mapped read-only
+    const int *mesh_fixed; // sorted source-region node indices, memory-mapped (NULL if none)
+    int mesh_num_fixed;
+    double mesh_s0; // slowness at the source (s/km); 0 reads the times linearly
+    double mesh_src_x, mesh_src_y, mesh_src_z; // source (station) position (km)
 }
 GridDesc;
 
