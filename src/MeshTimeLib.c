@@ -41,6 +41,7 @@
 #include "MeshTimeLib.h"
 
 #define MESH_BARY_TOL 1.0e-9
+#define MESH_BIN_TOL 1.0e-6 /* in bins */
 
 /* ------------------------------------------------------------------------- */
 /* read-only file mappings, registered by path */
@@ -261,16 +262,18 @@ int MeshTime_Locate(MeshDesc *mesh, double x, double y, double z, int *ptet, dou
     double fx = (x - mesh->bx0) / mesh->bdx;
     double fy = (y - mesh->by0) / mesh->bdy;
     double fz = (z - mesh->bz0) / mesh->bdz;
-    /* a point on the far face of the bin box belongs to the last bin */
-    if (fx >= 0.0 && fy >= 0.0 && fz >= 0.0
-            && fx <= (double) mesh->nbx && fy <= (double) mesh->nby && fz <= (double) mesh->nbz) {
-        int ix = (int) fx, iy = (int) fy, iz = (int) fz;
-        if (ix == mesh->nbx)
-            ix--;
-        if (iy == mesh->nby)
-            iy--;
-        if (iz == mesh->nbz)
-            iz--;
+    /* a point on a face of the bin box (to rounding) belongs to the outer bins; the
+     * barycentric test decides whether it is in the mesh */
+    if (fx >= -MESH_BIN_TOL && fy >= -MESH_BIN_TOL && fz >= -MESH_BIN_TOL
+            && fx <= (double) mesh->nbx + MESH_BIN_TOL && fy <= (double) mesh->nby + MESH_BIN_TOL
+            && fz <= (double) mesh->nbz + MESH_BIN_TOL) {
+        int ix = fx > 0.0 ? (int) fx : 0, iy = fy > 0.0 ? (int) fy : 0, iz = fz > 0.0 ? (int) fz : 0;
+        if (ix >= mesh->nbx)
+            ix = mesh->nbx - 1;
+        if (iy >= mesh->nby)
+            iy = mesh->nby - 1;
+        if (iz >= mesh->nbz)
+            iz = mesh->nbz - 1;
         size_t bin = ((size_t) ix * (size_t) mesh->nby + (size_t) iy) * (size_t) mesh->nbz + (size_t) iz;
         int64_t k;
         for (k = mesh->bin_start[bin]; k < mesh->bin_start[bin + 1]; k++) {
