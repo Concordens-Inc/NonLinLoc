@@ -90,7 +90,7 @@ add_compile_options("-D GMT_VER_5")
 
 ## Create the .o object files with add_library()
 ### Simplify by just creating the GRID_LIB_OBJS .o object file
-add_library(GRID_LIB_OBJS OBJECT GridLib.c util.c geo.c octtree/octtree.c io/json_io.c io/jReadWrite/source/jRead.c io/jReadWrite/source/jWrite.c alomax_matrix/alomax_matrix.c alomax_matrix/eigv.c alomax_matrix/alomax_matrix_svd.c matrix_statistics/matrix_statistics.c vector/vector.c ran1/ran1.c map_project.c)
+add_library(GRID_LIB_OBJS OBJECT GridLib.c MeshTimeLib.c util.c geo.c octtree/octtree.c io/json_io.c io/jReadWrite/source/jRead.c io/jReadWrite/source/jWrite.c alomax_matrix/alomax_matrix.c alomax_matrix/eigv.c alomax_matrix/alomax_matrix_svd.c matrix_statistics/matrix_statistics.c vector/vector.c ran1/ran1.c map_project.c)
 
 ### Simplify by just creating the NLLOC_LIB_OBJS .o object file
 add_library(NLLOC_LIB_OBJS OBJECT calc_crust_corr.c velmod.c NLLocLib.c GridMemLib.c phaselist.c loclist.c otime_limit.c)
@@ -151,6 +151,11 @@ target_link_libraries(LocSum GRID_LIB_OBJS m)
 #
 add_executable(Time2EQ Time2EQ1.c)
 target_link_libraries(Time2EQ GRID_LIB_OBJS m)
+# --------------------------------------------------------------------------
+# MeshTimeRead (2026 Concordens: read regular or mesh time grids at points)
+#
+add_executable(MeshTimeRead MeshTimeRead.c)
+target_link_libraries(MeshTimeRead GRID_LIB_OBJS m)
 
 # --------------------------------------------------------------------------
 # NLLoc_func_test

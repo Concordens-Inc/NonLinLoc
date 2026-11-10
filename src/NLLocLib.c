@@ -1903,7 +1903,7 @@ int GetObservations(FILE* fp_obs, char* ftype_obs, char* fn_grids,
 
             /* check that search grid is inside time grid (3D grids) */
 
-            if (arrival[nobs].gdesc.type == GRID_TIME &&
+            if (IS_GRID_TIME_3D(arrival[nobs].gdesc.type) &&
                     !IsGridInside(LocGrid + 0, &(arrival[nobs].gdesc), 0)) {
                 sprintf(MsgStr,
                         "WARNING: initial location search grid not contained inside arrival time grid, rejecting observation: %s %s", arrival[nobs].label, arrival[nobs].phase);
@@ -1918,7 +1918,7 @@ int GetObservations(FILE* fp_obs, char* ftype_obs, char* fn_grids,
                                      is less than DistStaGridMax (if DistStaGridMax > 0) */
             // 20190522 AJL - added to support LOCMETH maxDistStaGrid and minDistStaGrid with 3D grids
 
-            if (arrival[nobs].gdesc.type == GRID_TIME &&
+            if (IS_GRID_TIME_3D(arrival[nobs].gdesc.type) &&
                     (istat = IsDistStaGridOK(LocGrid + 0,
                     &(arrival[nobs].station),
                     DistStaGridMin, DistStaGridMax,
@@ -2340,7 +2340,7 @@ double CalcSimpleElevCorr(ArrivalDesc *arrival, int narr, double pvel, double sv
         elev_corr = -arrival[narr].station.depth / svel;
         // else check grid type
     } else {
-        if (arrival[narr].gdesc.type == GRID_TIME) {
+        if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
             if (diagnostic) {
                 sprintf(MsgStr, "CalcSimpleElevCorr: GRID_TIME");
                 nll_putmsg(1, MsgStr);
@@ -7689,7 +7689,7 @@ int SaveBestLocation(OctNode* poct_node, int num_arr_total, int num_arr_loc, Arr
             arrival[narr].station = station;
             //iopened = 1;
             /* check grid type, read travel time */
-            if (arrival[narr].gdesc.type == GRID_TIME) {
+            if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
                 /* 3D grid */
                 if (arrival[narr].fpgrid != NULL)
                     arrival[narr].pred_travel_time = (double) ReadAbsInterpGrid3d(
@@ -7731,7 +7731,7 @@ int SaveBestLocation(OctNode* poct_node, int num_arr_total, int num_arr_loc, Arr
         else
             snprintf(filename, sizeof (filename), "%s.angle", arrival[narr].fileroot);
         if (angleMode == ANGLE_MODE_YES) {
-            if (arrival[narr].gdesc.type == GRID_TIME) {
+            if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
                 /* 3D grid */
                 ReadTakeOffAnglesFile(filename,
                         phypo->x, phypo->y, phypo->z,
@@ -14276,7 +14276,7 @@ int getTravelTimes(ArrivalDesc *arrival, int num_arr_loc, double xval, double yv
             arrival[narr].pred_travel_time *= arrival[narr].tfact;
             /* else check grid type */
         } else {
-            if (arrival[narr].gdesc.type == GRID_TIME) {
+            if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
                 /* 3D grid */
                 if (arrival[narr].gdesc.buffer == NULL) {
                     /* read time grid from disk */
@@ -14334,6 +14334,22 @@ int getTravelTimes(ArrivalDesc *arrival, int num_arr_loc, double xval, double yv
 
     return (nReject);
 
+}
+
+
+
+/** 2026 Concordens: 1 if a travel time read on a mesh grid was rejected (sample outside the mesh) */
+
+int isOutsideMeshTimeGrid(ArrivalDesc *arrival, int num_arr_loc) {
+
+    int narr, n_compan;
+    for (narr = 0; narr < num_arr_loc; narr++) {
+        n_compan = arrival[narr].n_companion;
+        int type = n_compan >= 0 ? arrival[n_compan].gdesc.type : arrival[narr].gdesc.type;
+        if (type == GRID_TIME_MESH && arrival[narr].pred_travel_time < 0.0)
+            return (1);
+    }
+    return (0);
 }
 
 
@@ -14857,6 +14873,10 @@ long double LocOctree_core(int ngrid, double xval, double yval, double zval,
                     xval, yval, zval, nReject);
             nll_putmsg(4, MsgStr);
         }
+        // 2026 Concordens: a sample outside a mesh travel-time grid (above its free surface)
+        // has zero likelihood, as a sample above LOCTOPO_SURFACE; regular grids unchanged
+        if (nReject && isOutsideMeshTimeGrid(arrival, num_arr_loc))
+            iAboveTopo = 1;
     }
 
     // calculate cell volume and diagonal
