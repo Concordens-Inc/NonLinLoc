@@ -1903,7 +1903,7 @@ int GetObservations(FILE* fp_obs, char* ftype_obs, char* fn_grids,
 
             /* check that search grid is inside time grid (3D grids) */
 
-            if (arrival[nobs].gdesc.type == GRID_TIME &&
+            if (IS_GRID_TIME_3D(arrival[nobs].gdesc.type) &&
                     !IsGridInside(LocGrid + 0, &(arrival[nobs].gdesc), 0)) {
                 sprintf(MsgStr,
                         "WARNING: initial location search grid not contained inside arrival time grid, rejecting observation: %s %s", arrival[nobs].label, arrival[nobs].phase);
@@ -1918,7 +1918,7 @@ int GetObservations(FILE* fp_obs, char* ftype_obs, char* fn_grids,
                                      is less than DistStaGridMax (if DistStaGridMax > 0) */
             // 20190522 AJL - added to support LOCMETH maxDistStaGrid and minDistStaGrid with 3D grids
 
-            if (arrival[nobs].gdesc.type == GRID_TIME &&
+            if (IS_GRID_TIME_3D(arrival[nobs].gdesc.type) &&
                     (istat = IsDistStaGridOK(LocGrid + 0,
                     &(arrival[nobs].station),
                     DistStaGridMin, DistStaGridMax,
@@ -2340,7 +2340,7 @@ double CalcSimpleElevCorr(ArrivalDesc *arrival, int narr, double pvel, double sv
         elev_corr = -arrival[narr].station.depth / svel;
         // else check grid type
     } else {
-        if (arrival[narr].gdesc.type == GRID_TIME) {
+        if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
             if (diagnostic) {
                 sprintf(MsgStr, "CalcSimpleElevCorr: GRID_TIME");
                 nll_putmsg(1, MsgStr);
@@ -6832,47 +6832,52 @@ int hypotime2hrminsec(long double phypo_time, int *phypo_hour, int *phypo_min, d
 
 }
 
-/** function to regenerate hypo date and time fields, robust to negative sec in hypo time */
+/** function to regenerate hypo date and time fields, robust to negative sec in hypo time
+ *
+ * 2026 Concordens: phypo_time (s) is counted from 00:00 of the hypocentre's
+ * year/month/day (the earliest arrival's day, HomogDateTime); an origin before
+ * that midnight, or 24 h or more after it, moves the date by whole days. The
+ * 20250207 version went through mktime (local time, tm_isdst unset) and added
+ * 3600 s: the date stayed the arrivals' day and the time was off by the
+ * machine's UTC offset plus one hour (05:59:59 for 23:59:59 under EST).
+ */
+
+static int days_in_year(int year) {
+    return (DayOfYear(year, 12, 31));
+}
 
 int reset_hypodatetime(long double phypo_time, HypoDesc *phypo) {
 
-    long double hyp_time_tmp = phypo_time;
-    phypo->hour = (int) (hyp_time_tmp / 3600.0L);
-    hyp_time_tmp -= (long double) phypo->hour * 3600.0L;
-    phypo->min = (int) (hyp_time_tmp / 60.0L);
-    hyp_time_tmp -= (long double) phypo->min * 60.0L;
-    phypo->sec = (double) hyp_time_tmp;
+    long double t = phypo_time;
+    int day_shift = 0;
+    while (t < 0.0L) {
+        t += 86400.0L;
+        day_shift--;
+    }
+    while (t >= 86400.0L) {
+        t -= 86400.0L;
+        day_shift++;
+    }
 
-    if (phypo->sec < 0.0) {
+    phypo->hour = (int) (t / 3600.0L);
+    t -= (long double) phypo->hour * 3600.0L;
+    phypo->min = (int) (t / 60.0L);
+    t -= (long double) phypo->min * 60.0L;
+    phypo->sec = (double) t;
 
-        printf("DEBUG: reset_hypodatetime: phypo time in: %4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%lf\n", phypo->year, phypo->month, phypo->day, phypo->hour, phypo->min, phypo->sec);
-
-        double hypo_sec = -phypo->sec;
-        int int_sec_offset = (int) hypo_sec + 1;
-        double dec_sec_corr = (double) int_sec_offset - hypo_sec;
-
-        struct tm hypo_time;
-        hypo_time.tm_year = phypo->year - 1900;
-        hypo_time.tm_mon = phypo->month - 1;
-        hypo_time.tm_mday = phypo->day;
-        hypo_time.tm_hour = phypo->hour;
-        hypo_time.tm_min = phypo->min;
-        hypo_time.tm_sec = 0;
-
-        time_t time_seconds = mktime(&hypo_time);
-        time_seconds += 3600 - int_sec_offset;
-
-        struct tm *new_hypo_time = gmtime(&time_seconds);
-
-        phypo->year = new_hypo_time->tm_year + 1900;
-        phypo->month = new_hypo_time->tm_mon + 1;
-        phypo->day = new_hypo_time->tm_mday;
-        phypo->hour = new_hypo_time->tm_hour;
-        phypo->min = new_hypo_time->tm_min;
-        phypo->sec = (double) new_hypo_time->tm_sec + dec_sec_corr;
-
-        printf("DEBUG: reset_hypodatetime: phypo time out: %4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%lf\n", phypo->year, phypo->month, phypo->day, phypo->hour, phypo->min, phypo->sec);
-
+    if (day_shift != 0) {
+        int year = phypo->year;
+        int yearday = DayOfYear(year, phypo->month, phypo->day) + day_shift;
+        while (yearday < 1) {
+            year--;
+            yearday += days_in_year(year);
+        }
+        while (yearday > days_in_year(year)) {
+            yearday -= days_in_year(year);
+            year++;
+        }
+        phypo->year = year;
+        MonthDay(year, yearday, &(phypo->month), &(phypo->day));
     }
 
     return (0);
@@ -6928,7 +6933,8 @@ int StdDateTime(ArrivalDesc *arrival, int num_arrivals, HypoDesc * phypo) {
     hypotime2hrminsec(phypo->time, &(phypo->hour), &(phypo->min), &(phypo->sec));
     //printf("DEBUG: StdDateTime: phypo->time %4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%lf\n", phypo->year, phypo->month, phypo->day, phypo->hour, phypo->min, phypo->sec);
     // 20250207 AJL - Bug fix: if negative time correct data/time
-    if (phypo->sec < 0.0) {
+    // 2026 Concordens: also an origin 24 h or more after the date's midnight
+    if (phypo->sec < 0.0 || phypo->hour >= 24) {
 
         reset_hypodatetime(phypo->time, phypo);
     }
@@ -7689,7 +7695,7 @@ int SaveBestLocation(OctNode* poct_node, int num_arr_total, int num_arr_loc, Arr
             arrival[narr].station = station;
             //iopened = 1;
             /* check grid type, read travel time */
-            if (arrival[narr].gdesc.type == GRID_TIME) {
+            if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
                 /* 3D grid */
                 if (arrival[narr].fpgrid != NULL)
                     arrival[narr].pred_travel_time = (double) ReadAbsInterpGrid3d(
@@ -7731,7 +7737,7 @@ int SaveBestLocation(OctNode* poct_node, int num_arr_total, int num_arr_loc, Arr
         else
             snprintf(filename, sizeof (filename), "%s.angle", arrival[narr].fileroot);
         if (angleMode == ANGLE_MODE_YES) {
-            if (arrival[narr].gdesc.type == GRID_TIME) {
+            if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
                 /* 3D grid */
                 ReadTakeOffAnglesFile(filename,
                         phypo->x, phypo->y, phypo->z,
@@ -14276,7 +14282,7 @@ int getTravelTimes(ArrivalDesc *arrival, int num_arr_loc, double xval, double yv
             arrival[narr].pred_travel_time *= arrival[narr].tfact;
             /* else check grid type */
         } else {
-            if (arrival[narr].gdesc.type == GRID_TIME) {
+            if (IS_GRID_TIME_3D(arrival[narr].gdesc.type)) {
                 /* 3D grid */
                 if (arrival[narr].gdesc.buffer == NULL) {
                     /* read time grid from disk */
@@ -14334,6 +14340,22 @@ int getTravelTimes(ArrivalDesc *arrival, int num_arr_loc, double xval, double yv
 
     return (nReject);
 
+}
+
+
+
+/** 2026 Concordens: 1 if a travel time read on a mesh grid was rejected (sample outside the mesh) */
+
+int isOutsideMeshTimeGrid(ArrivalDesc *arrival, int num_arr_loc) {
+
+    int narr, n_compan;
+    for (narr = 0; narr < num_arr_loc; narr++) {
+        n_compan = arrival[narr].n_companion;
+        int type = n_compan >= 0 ? arrival[n_compan].gdesc.type : arrival[narr].gdesc.type;
+        if (type == GRID_TIME_MESH && arrival[narr].pred_travel_time < 0.0)
+            return (1);
+    }
+    return (0);
 }
 
 
@@ -14857,6 +14879,10 @@ long double LocOctree_core(int ngrid, double xval, double yval, double zval,
                     xval, yval, zval, nReject);
             nll_putmsg(4, MsgStr);
         }
+        // 2026 Concordens: a sample outside a mesh travel-time grid (above its free surface)
+        // has zero likelihood, as a sample above LOCTOPO_SURFACE; regular grids unchanged
+        if (nReject && isOutsideMeshTimeGrid(arrival, num_arr_loc))
+            iAboveTopo = 1;
     }
 
     // calculate cell volume and diagonal

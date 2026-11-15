@@ -46,6 +46,7 @@ e-mail: anthony@alomax.net  web: http://www.alomax.net
 
 
 #include "GridLib.h"
+#include "MeshTimeLib.h"
 
 // define globals
 
@@ -864,12 +865,12 @@ int convert_grid_type(GridDesc* pgrid, int char2numeric) {
     int i;
 
 
-    int ntypes = 20;
+    int ntypes = 21;
     //
     static char char_types[][32] = {
         "VELOCITY", "VELOCITY_METERS",
         "SLOWNESS", "SLOW_LEN", "VEL2", "SLOW2", "SLOW2_METERS",
-        "TIME", "TIME2D",
+        "TIME", "TIME2D", "TIME_MESH",
         "ANGLE", "ANGLE2D",
         "INCLINATION", "INCLINATION2D",
         "PROB_DENSITY", "MISFIT", "LIKELIHOOD",
@@ -879,7 +880,7 @@ int convert_grid_type(GridDesc* pgrid, int char2numeric) {
     static int types[] = {
         GRID_VELOCITY, GRID_VELOCITY_METERS,
         GRID_SLOWNESS, GRID_SLOW_LEN, GRID_VEL2, GRID_SLOW2, GRID_SLOW2_METERS,
-        GRID_TIME, GRID_TIME_2D,
+        GRID_TIME, GRID_TIME_2D, GRID_TIME_MESH,
         GRID_ANGLE, GRID_ANGLE_2D,
         GRID_INCLINATION, GRID_INCLINATION_2D,
         GRID_PROB_DENSITY, GRID_MISFIT, GRID_LIKELIHOOD,
@@ -2337,6 +2338,12 @@ int OpenGrid3dFile(char *fname, FILE **fp_grid, FILE **fp_hdr,
     // initialize key fields
     pgrid->array = NULL;
     pgrid->buffer = NULL;
+    // 2026 Concordens: mesh fields, set below for a TIME_MESH grid
+    pgrid->mesh = NULL;
+    pgrid->mesh_values = NULL;
+    pgrid->mesh_fixed = NULL;
+    pgrid->mesh_num_fixed = 0;
+    pgrid->mesh_s0 = 0.0;
 
 
     /* read header file */
@@ -2417,7 +2424,18 @@ int OpenGrid3dFile(char *fname, FILE **fp_grid, FILE **fp_hdr,
         }
     }
 
-
+    // 2026 Concordens: a travel-time grid on a tetrahedral mesh maps its mesh and node times
+    if (pgrid->type == GRID_TIME_MESH) {
+        if (isCascadingGrid(pgrid)) {
+            nll_puterr2("ERROR: a TIME_MESH grid cannot be a cascading grid:", fn_hdr);
+            CloseGrid3dFile(pgrid, fp_grid, fp_hdr);
+            return (-1);
+        }
+        if (MeshTime_Open(pgrid, fn_hdr, *fp_hdr) < 0) {
+            CloseGrid3dFile(pgrid, fp_grid, fp_hdr);
+            return (-1);
+        }
+    }
 
     return (0);
 
@@ -3036,6 +3054,10 @@ float InterpCubeAngles(DOUBLE xdiff, DOUBLE ydiff, DOUBLE zdiff,
 /* read from file if fpgrid != NULL, otherwise read from grid buffer */
 
 GRID_FLOAT_TYPE ReadAbsInterpGrid3d(FILE *fpgrid, GridDesc* pgrid, double xloc, double yloc, double zloc, int clean_casc_allocs) {
+
+    // 2026 Concordens: travel-time grid on a tetrahedral mesh (MeshTimeLib.c)
+    if (pgrid->type == GRID_TIME_MESH)
+        return (MeshTime_Read(pgrid, xloc, yloc, zloc));
 
     DOUBLE xoff, yoff, zoff;
     xoff = (xloc - pgrid->origx) / pgrid->dx;

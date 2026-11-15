@@ -560,6 +560,7 @@ int GetTimeDelays(char*);
 int GetTimeDelaySurface(char*);
 
 int GetTopoSurface(char*);
+int isOutsideMeshTimeGrid(ArrivalDesc *arrival, int num_arr_loc);
 
 int LocGridSearch(int, int, int, ArrivalDesc*, GridDesc*,
         GaussLocParams*, HypoDesc*);
